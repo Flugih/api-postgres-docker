@@ -1,79 +1,105 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from database import insert_pets, get_pets, Base, Pet
-from API import get_all_pets, remove_pet_by_id
+from sqlalchemy.orm import sessionmaker
+from database import Database, Pet, Base
+from API import API
 
 
 class TestDatabase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Создаем временную базу данных в памяти для тестов
-        cls.engine = create_engine('sqlite:///:memory:')
-        Base.metadata.create_all(cls.engine)
+        db = Database()  # Создание экземпляра базы данных
+
+        cls.engine = create_engine('sqlite:///:memory:')  # В памяти
+        Base.metadata.create_all(cls.engine)  # Создание всех таблиц в базе данных в памяти
+
+        # Создаем сессию
         cls.Session = sessionmaker(bind=cls.engine)
+        cls.session = cls.Session()
 
     def setUp(self):
-        # Начинаем новую сессию базы данных перед каждым тестом
+        # Начинаем новую сессию перед каждым тестом
         self.session = self.Session()
+
+        # Очищаем базу данных перед каждым тестом
+        self.session.query(Pet).delete()
+        self.session.commit()
 
     def tearDown(self):
         # Откатываем изменения и закрываем сессию после каждого теста
         self.session.rollback()
         self.session.close()
 
-    @patch('API.get_all_pets')
+    @patch('API.API')
     def test_insert_pets(self, mock_get_all_pets):
-        # Задаем что функция get_all_pets вернет эти данные
-        mock_get_all_pets.return_value = [
+        db = Database()
+
+        # Мокаем API для получения питомцев
+        db.api.get_all_pets = MagicMock(return_value=[
             {"name": "Dog", "status": "available"},
             {"name": "Cat", "status": "available"}
-        ]
+        ])
 
-        # Создаем фейковую сессию базы данных
-        mock_session = MagicMock(spec=Session)
-        insert_pets(mock_session)
-        # Проверяем что данные были сохранены в базу данных
-        mock_session.commit.assert_called_once()
+        # Вставляем питомцев в базу данных
+        db.insert_pets(self.session)
 
-    @patch('builtins.print')
-    def test_get_pets(self, mock_print):
-        # Создаем двух питомцев и добавляем их в базу данных
+        # Проверяем, что питомцы были вставлены
+        pets = self.session.query(Pet).all()
+        self.assertEqual(len(pets), 2)
+        self.assertEqual(pets[0].name, 'Dog')
+        self.assertEqual(pets[0].status, 'available')
+        self.assertEqual(pets[1].name, 'Cat')
+        self.assertEqual(pets[1].status, 'available')
+
+    def test_display_pets(self):
+        db = Database()
+        # Создаем двух питомцев
         pet1 = Pet(name='Buddy', status='available')
         pet2 = Pet(name='Max', status='sold')
         self.session.add(pet1)
         self.session.add(pet2)
         self.session.commit()
 
-        # Получаем питомцев из базы данных и проверяем что они правильно выводятся
-        get_pets(self.session)
-        mock_print.assert_any_call("ID: 1, Name: Buddy, Status: available")
-        mock_print.assert_any_call("ID: 2, Name: Max, Status: sold")
+        # Получаем питомцев из базы данных
+        pets = self.session.query(Pet).all()
+
+        # Проверяем, что питомцы правильно сохранены
+        self.assertEqual(len(pets), 2)
+        self.assertEqual(pets[0].name, 'Buddy')
+        self.assertEqual(pets[0].status, 'available')
+        self.assertEqual(pets[1].name, 'Max')
+        self.assertEqual(pets[1].status, 'sold')
+
 
 class TestAPI(unittest.TestCase):
-    @patch('requests.get')
-    def test_get_all_pets(self, mock_get):
+    @patch('requests.post')
+    def test_add_new_pet(self, mock_post):
+        api = API()
         # Создаем фейковый ответ от API
-        mock_response = unittest.mock.Mock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [{"id": 1, "name": "Dog"}, {"id": 2, "name": "Cat"}]
-        mock_get.return_value = mock_response
+        mock_post.return_value = mock_response
 
-        # Проверяем что функция get_all_pets возвращает правильные данные
-        result = get_all_pets()
-        self.assertEqual(result, [{"id": 1, "name": "Dog"}, {"id": 2, "name": "Cat"}])
+        # Проверяем что функция add_new_pet правильно добавляет питомца
+        with patch('builtins.print') as mock_print:
+            api.add_new_pet("Buddy")
+            mock_post.assert_called_once()
+            mock_print.assert_called_with("Питомец успешно добавлен!")
 
-    @patch('builtins.input', side_effect=[1])
     @patch('requests.delete')
-    def test_remove_pet_by_id(self, mock_delete, mock_input):
+    def test_remove_pet_by_id(self, mock_delete):
+        api = API()
         # Создаем фейковый ответ от API
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_delete.return_value = mock_response
 
+        # ID питомца, который будет передан в метод
+        pet_id = 1
+
         # Проверяем что функция remove_pet_by_id правильно удаляет питомца
         with patch('builtins.print') as mock_print:
-            remove_pet_by_id()
-            mock_delete.assert_called_once_with('https://petstore.swagger.io/v2/pet/1')
+            api.remove_pet_by_id(pet_id)
+            mock_delete.assert_called_once_with(f'{api.get_full_url(api.api_remove_endpoint_url)}{pet_id}')
             mock_print.assert_called_with("Питомец успешно удален!")

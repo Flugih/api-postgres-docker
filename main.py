@@ -1,9 +1,10 @@
-from TUI import TextUserInterface
+from CLI import CommandLineInterface
 
 
 def main():
-    tui = TextUserInterface()
-    tui.start_tui()
+    cli = CommandLineInterface()
+    args = cli.parse_args()
+    cli.execute_command(args)
 
 
 if __name__ == '__main__':
