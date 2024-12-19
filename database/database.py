@@ -33,24 +33,54 @@ class Database:
 
     # Вставка питомцев в базу данных
     def insert_pets(self, session):
-        data = self.api.get_all_pets()  # Получение данных от API
-        for pet in data:
-            new_pet = Pet(name=pet.get('name'), status=pet.get('status'))
-            session.add(new_pet)
-        session.commit()
+        try:
+            # Получение данных от API
+            data = self.api.get_all_pets()
+            # Начало транзакции
+            for pet in data:
+                new_pet = Pet(name=pet.get('name'), status=pet.get('status'))
+                session.add(new_pet)
+            # Подтверждение транзакции
+            session.commit()
+        except Exception as ex:
+            # Обработка ошибки и откат транзакции
+            session.rollback()
+            print(f"Ошибка при внесении данных в базу данных: {ex}")
+        finally:
+            # Закрытие сессии
+            session.close()
 
     # Получение всех питомцев
     def display_pets(self, session):
-        pets = session.query(Pet).all()
-        for pet in pets:
-            print(f"ID: {pet.id}, Name: {pet.name}, Status: {pet.status}")
+        try:
+            # Выполнение запроса к базе данных
+            pets = session.query(Pet).all()
+            # Итерация по результатам и вывод информации
+            for pet in pets:
+                print(f"ID: {pet.id}, Name: {pet.name}, Status: {pet.status}")
+        except Exception as ex:
+            # Обработка ошибки
+            print(f"Ошибка при выполнении запроса к базе данных: {ex}")
+        finally:
+            # Закрытие сессии
+            session.close()
 
     # Удаление питомца по его ID
     def delete_pet_by_id(self, session, pet_id):
-        pet = session.query(Pet).filter_by(id=pet_id).first()
-        if pet:
-            session.delete(pet)
-            session.commit()
-            print(f"Питомец с ID: {pet_id} был удален.")
-        else:
-            print(f"Питомец с ID: {pet_id} не найден.")
+        try:
+            # Получение питомца по ID
+            pet = session.query(Pet).filter_by(id=pet_id).first()
+            if pet:
+                # Удаление питомца
+                session.delete(pet)
+                session.commit()
+                print(f"Питомец с ID: {pet_id} был удален.")
+            else:
+                print(f"Питомец с ID: {pet_id} не найден.")
+        except Exception as ex:
+            # Обработка ошибки и откат транзакции
+            session.rollback()
+            print(f"Ошибка при удалении питомца: {ex}")
+        finally:
+            # Закрытие сессии
+            session.close()
