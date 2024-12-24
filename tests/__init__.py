@@ -1,1 +1,1 @@
-from tests.tests import TestDatabase, TestAPI
+from .tests import TestDatabase, TestAPI
